@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Dış ince çember -->
+    <path
+        android:pathData="M54,10 A44,44 0 1,1 53.999,10 Z"
+        android:strokeColor="#4064B5F6"
+        android:strokeWidth="1.5"
+        android:fillColor="@android:color/transparent"/>
+
+    <!-- Ana halka (kalın) -->
+    <path
+        android:pathData="M54,18 A36,36 0 1,1 53.999,18 Z"
+        android:strokeColor="#CC64B5F6"
+        android:strokeWidth="14"
+        android:fillColor="@android:color/transparent"/>
+
+    <!-- Glow - iç halka parlama -->
+    <path
+        android:pathData="M54,18 A36,36 0 1,1 53.999,18 Z"
+        android:strokeColor="#3364B5F6"
+        android:strokeWidth="22"
+        android:fillColor="@android:color/transparent"/>
+
+    <!-- İç ince çember -->
+    <path
+        android:pathData="M54,32 A22,22 0 1,1 53.999,32 Z"
+        android:strokeColor="#4464B5F6"
+        android:strokeWidth="1"
+        android:fillColor="@android:color/transparent"/>
+
+    <!-- Küçük üst nokta (navigasyon simgesi) -->
+    <path
+        android:pathData="M54,22 L57,30 L54,28 L51,30 Z"
+        android:fillColor="#AA64B5F6"/>
+
+</vector>

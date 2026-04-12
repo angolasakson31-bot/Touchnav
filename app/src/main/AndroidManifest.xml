@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.touchnav.app">
+
+    <!-- ── İzinler ─────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.BATTERY_STATS"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Bildirim rozeti için (kullanıcı manuel vermelidir) -->
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"/>
+    <!-- Widget için -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+    <application
+        android:allowBackup="true"
+        android:label="TouchNav"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@android:style/Theme.Material.Light">
+
+        <!-- ── MainActivity ──────────────────────────────────── -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- ── OnboardingActivity ────────────────────────────── -->
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"/>
+
+        <!-- ── SettingsActivity ──────────────────────────────── -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"/>
+
+        <!-- ── FloatingService ──────────────────────────────── -->
+        <service
+            android:name=".FloatingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"/>
+
+        <!-- ── NavService (Erişilebilirlik) ─────────────────── -->
+        <service
+            android:name=".NavService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config"/>
+        </service>
+
+        <!-- ── NotifListenerService (Bildirim rozeti) ──────── -->
+        <service
+            android:name=".NotifListenerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+
+        <!-- ── BootReceiver ──────────────────────────────────── -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- ── Widget ────────────────────────────────────────── -->
+        <receiver
+            android:name=".TouchNavWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <action android:name="com.touchnav.WIDGET_TOGGLE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/touchnav_widget_info"/>
+        </receiver>
+
+    </application>
+</manifest>

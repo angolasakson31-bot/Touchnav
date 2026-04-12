@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@android:color/transparent"
+    android:padding="4dp">
+
+    <!-- Başlat / Durdur butonu (tıklanabilir ana alan) -->
+    <LinearLayout
+        android:id="@+id/widget_btn_bg"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingLeft="12dp"
+        android:paddingRight="8dp"
+        android:background="#1A1A2E">
+
+        <!-- TouchNav etiketi -->
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="TouchNav"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"/>
+
+        <!-- Durum metni (Aktif / Kapalı) -->
+        <TextView
+            android:id="@+id/widget_status_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Kapalı ○"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#FF5252"
+            android:layout_marginRight="8dp"/>
+
+        <!-- Toggle ikonu -->
+        <TextView
+            android:id="@+id/widget_btn_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="▶ Başlat"
+            android:textSize="12sp"
+            android:textColor="#64B5F6"
+            android:textStyle="bold"/>
+
+    </LinearLayout>
+
+    <!-- Ayarlar butonu -->
+    <TextView
+        android:id="@+id/widget_settings_btn"
+        android:layout_width="40dp"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="⚙"
+        android:textSize="18sp"
+        android:textColor="#888899"
+        android:background="#111122"
+        android:layout_marginLeft="2dp"/>
+
+</LinearLayout>
