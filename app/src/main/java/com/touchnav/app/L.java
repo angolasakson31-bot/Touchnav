@@ -75,7 +75,7 @@ public class L {
     public static String cardBattery()   { return s("PİL UYARISI", "BATTERY ALERT"); }
     public static String cardKeyboard()  { return s("KLAVYE", "KEYBOARD"); }
     public static String cardNotif()     { return s("BİLDİRİM ROZETİ", "NOTIFICATION BADGE"); }
-    public static String cardTransparency(){ return s("ŞEFFAFLIK KISAYOLU", "TRANSPARENCY SHORTCUT"); }
+    public static String cardTransparency(){ return s("GİZLİLİK KISAYOLU", "PRIVACY SHORTCUT"); }
 
     // ── Ayar etiketleri ───────────────────────────────────────────
     public static String opacity()      { return s("Opaklık", "Opacity"); }
@@ -110,8 +110,8 @@ public class L {
     public static String kbShrink()     { return s("Klavye açıkken küçül", "Shrink when keyboard opens"); }
     public static String kbSize()       { return s("Klavye modunda boyut", "Size in keyboard mode"); }
     public static String notifBadgeToggle(){ return s("Bildirim rozeti göster", "Show notification badge"); }
-    public static String transparencyToggle(){ return s("Şeffaflık kısayolu aktif", "Transparency shortcut active"); }
-    public static String transparencyDur(){ return s("Şeffaflık süresi", "Transparency duration"); }
+    public static String transparencyToggle(){ return s("Gizlilik kısayolu aktif", "Privacy shortcut active"); }
+    public static String transparencyDur(){ return s("Gizlilik süresi", "Privacy duration"); }
     public static String language()     { return s("Dil / Language", "Language / Dil"); }
 
     // ── Hareket etiketleri ───────────────────────────────────────
@@ -133,7 +133,7 @@ public class L {
             s("Uygulama Çekmecesi", "App Drawer"),
             s("Hiçbir şey", "None"),
             s("Ekran Kaydı", "Screen Record"),
-            s("Şeffaflık", "Transparency"),
+            s("Gizlilik", "Privacy"),
             s("Asistan", "Assistant"),
             s("El Feneri", "Torch")
         };

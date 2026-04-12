@@ -84,7 +84,12 @@ public class FloatingService extends Service {
     private final Handler  transparencyHandler = new Handler();
     private       Runnable transparencyRunnable = null;
     // Klavye tespiti için ViewTreeObserver yöntemi — AccessibilityService'ten bağımsız
-    private View kbDetectorView;
+    private View    kbDetectorView;
+    private int     maxKbDetectorH = 0;   // klavye kapalıyken maksimum görünür yükseklik
+    private final Handler  kbCheckHandler  = new Handler();
+    private final Runnable kbCheckRunnable = new Runnable() {
+        @Override public void run() { checkKbFromDetector(); kbCheckHandler.postDelayed(this, 400); }
+    };
 
     private final List<float[]> touchPath = new ArrayList<>();
     private static final int PATH_MIN_DIST = 15;
@@ -179,10 +184,16 @@ public class FloatingService extends Service {
     };
 
     /**
-     * ViewTreeObserver tabanlı klavye tespiti.
-     * 1x1 px şeffaf overlay view, SOFT_INPUT_ADJUST_RESIZE ile klavye açılınca küçülür.
-     * getWindowVisibleDisplayFrame() ile görünür yükseklik hesaplanır.
-     * AccessibilityService'e bağımlı değil — tüm cihaz/ROM'larda güvenilir çalışır.
+     * ViewTreeObserver + polling tabanlı klavye tespiti.
+     *
+     * KRİTİK: FLAG_NOT_FOCUSABLE ALONE disables SOFT_INPUT_ADJUST_RESIZE.
+     * Fix: FLAG_NOT_FOCUSABLE | FLAG_ALT_FOCUSABLE_IM combination.
+     *   → Window never takes focus (underlying app unaffected)
+     *   → BUT IME still resizes this window (ADJUST_RESIZE works)
+     *
+     * Height tracking: record max observed height as baseline.
+     * If current height drops > 150dp below baseline → keyboard is open.
+     * 400ms polling also runs as fallback for ROMs that skip the listener.
      */
     private void createKeyboardDetector() {
         int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -190,40 +201,48 @@ public class FloatingService extends Service {
                 : WindowManager.LayoutParams.TYPE_PHONE;
 
         WindowManager.LayoutParams kbp = new WindowManager.LayoutParams(
-                1,
+                WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
                 type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM, // CRITICAL: enables ADJUST_RESIZE
                 PixelFormat.TRANSLUCENT);
-        // FLAG_LAYOUT_IN_SCREEN eklenmez — IME açılınca pencere küçülsün
+        // No FLAG_LAYOUT_IN_SCREEN — window must shrink with IME
         kbp.gravity = Gravity.TOP | Gravity.LEFT;
         kbp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 
         kbDetectorView = new View(this);
         kbDetectorView.setAlpha(0f);
 
-        kbDetectorView.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-            if (kbDetectorView == null) return;
-            android.graphics.Rect r = new android.graphics.Rect();
-            kbDetectorView.getWindowVisibleDisplayFrame(r);
-            // r.bottom = klavye+navBar üstündeki görünür alan tabanı
-            int kbH = screenH - r.bottom;
-            // Eşik: 150dp — nav bar'dan (tipik ~48dp) büyük, gerçek klavyeden küçük
-            boolean kbOpen = kbH > dpToPx(150);
-            if (kbOpen != keyboardVisible) {
-                Intent fake = new Intent(kbOpen ? ACTION_KEYBOARD_SHOW : ACTION_KEYBOARD_HIDE);
-                fake.setPackage(getPackageName());
-                if (kbOpen && kbH > 0) fake.putExtra("kb_height", kbH);
-                keyboardReceiver.onReceive(FloatingService.this, fake);
-            }
-        });
+        // Fires immediately on layout change (keyboard open/close)
+        kbDetectorView.getViewTreeObserver().addOnGlobalLayoutListener(this::checkKbFromDetector);
 
         try {
             windowManager.addView(kbDetectorView, kbp);
         } catch (Exception e) {
             kbDetectorView = null;
+            return;
+        }
+        // Polling fallback for ROMs that don't fire the layout listener
+        kbCheckHandler.postDelayed(kbCheckRunnable, 800);
+    }
+
+    /** Detector view'ın yüksekliğine bakarak klavye durumunu günceller */
+    private void checkKbFromDetector() {
+        if (kbDetectorView == null) return;
+        int visH = kbDetectorView.getHeight();
+        if (visH <= 0) return;
+        if (visH > maxKbDetectorH) maxKbDetectorH = visH; // baseline güncelle
+        if (maxKbDetectorH == 0) return;
+        int kbH   = maxKbDetectorH - visH;
+        boolean kbOpen = kbH > dpToPx(150);
+        if (kbOpen != keyboardVisible) {
+            Intent fake = new Intent(kbOpen ? ACTION_KEYBOARD_SHOW : ACTION_KEYBOARD_HIDE);
+            fake.setPackage(getPackageName());
+            if (kbOpen && kbH > 0) fake.putExtra("kb_height", kbH);
+            keyboardReceiver.onReceive(this, fake);
         }
     }
 
@@ -323,6 +342,7 @@ public class FloatingService extends Service {
         cancelGhostTimer();
         cancelTransparencyTimer();
         longPressHandler.removeCallbacksAndMessages(null);
+        kbCheckHandler.removeCallbacksAndMessages(null);
         if (kbDetectorView != null) {
             try { windowManager.removeView(kbDetectorView); } catch (Exception ignored) {}
             kbDetectorView = null;
@@ -851,8 +871,10 @@ public class FloatingService extends Service {
     private void toggleTransparency() {
         if (transparencyActive) { cancelTransparencyTimer(); return; }
         transparencyActive = true;
-        // Tamamen görünmez yap — fotoğraf/video çekerken hiç görünmesin
-        floatView.animate().alpha(0f).setDuration(200).start();
+        // Görünmez + dokunulamaz yap (tam gizlilik — o konuma basınca buton olmaz)
+        floatView.animate().alpha(0f).setDuration(150).start();
+        params.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        try { windowManager.updateViewLayout(floatView, params); } catch (Exception ignored) {}
         transparencyRunnable = this::cancelTransparencyTimer;
         transparencyHandler.postDelayed(transparencyRunnable, settings.getTransparencyDuration());
     }
@@ -860,7 +882,9 @@ public class FloatingService extends Service {
     private void cancelTransparencyTimer() {
         if (transparencyRunnable != null) { transparencyHandler.removeCallbacks(transparencyRunnable); transparencyRunnable = null; }
         transparencyActive = false;
-        // Yavaşça geri gel — anlık beliriş yerine fade-in
+        // Dokunulabilirliği geri ver, yavaşça görün
+        params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        try { windowManager.updateViewLayout(floatView, params); } catch (Exception ignored) {}
         if (floatView != null) floatView.animate().alpha(settings.getOpacity()).setDuration(400).start();
     }
 
