@@ -21,22 +21,10 @@ android {
 
     signingConfigs {
         release {
-            def ksPath  = System.getenv("KEYSTORE_PATH")  ?: ""
-            def ksPass  = System.getenv("STORE_PASSWORD") ?: ""
-            def kAlias  = System.getenv("KEY_ALIAS")      ?: ""
-            def kPass   = System.getenv("KEY_PASSWORD")   ?: ""
-            if (ksPath) {
-                storeFile     file(ksPath)
-                storePassword ksPass
-                keyAlias      kAlias
-                keyPassword   kPass
-            } else {
-                // Fallback: debug keystore (local builds)
-                storeFile     signingConfigs.debug.storeFile
-                storePassword signingConfigs.debug.storePassword
-                keyAlias      signingConfigs.debug.keyAlias
-                keyPassword   signingConfigs.debug.keyPassword
-            }
+            storeFile     file("../touchnav-release.p12")
+            storePassword "touchnav2024"
+            keyAlias      "touchnav"
+            keyPassword   "touchnav2024"
         }
     }
 

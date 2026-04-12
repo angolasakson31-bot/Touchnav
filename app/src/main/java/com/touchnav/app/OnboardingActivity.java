@@ -52,7 +52,9 @@ public class OnboardingActivity extends Activity {
 
     /** Her adımın gerçek durumunu kontrol et */
     private void refreshStepStatus() {
-        // Adım 0: Ekran üstü izni — programatik kontrol mümkün
+        // Adım 0: Kısıtlı ayarlar + overlay izni
+        //   Overlay API ile kontrol edebildiğimiz tek şey canDrawOverlays.
+        //   Overlay verilmişse kısıtlı ayarlar da açılmış demektir (önkoşul).
         stepDone[0] = Settings.canDrawOverlays(this);
         // Adım 1: Erişilebilirlik
         stepDone[1] = (NavService.getInstance() != null);
@@ -152,25 +154,33 @@ public class OnboardingActivity extends Activity {
             .setInterpolator(new OvershootInterpolator(0.7f)).start();
     }
 
-    // ── Adım 0: Ekran Üstü İzni ──────────────────────────────────
+    // ── Adım 0: Kısıtlı Ayarlar + Ekran Üstü İzni ───────────────
     private void buildStepRestricted() {
         boolean canOverlay = Settings.canDrawOverlays(this);
         stepDone[0] = canOverlay;
 
-        addTitle(L.isTr() ? "Ekran Üstü İzni" : "Overlay Permission");
+        addTitle(L.isTr() ? "Başlangıç İzinleri" : "Initial Permissions");
         addSub(L.isTr()
-            ? "TouchNav'ın diğer uygulamaların\nüzerinde görünmesi için bu izni ver."
-            : "Allow TouchNav to appear\nover other applications.");
+            ? "1) Uygulama Bilgisi'ni aç → sağ üst ⋮ → Kısıtlı ayarlara izin ver\n" +
+              "2) Ardından ekran üstü iznini ver"
+            : "1) Open App Info → top-right ⋮ → Allow restricted settings\n" +
+              "2) Then grant overlay permission");
 
         addStatusChip(canOverlay,
-            canOverlay ? (L.isTr() ? "✓ İzin Verildi" : "✓ Permission Granted")
-                       : (L.isTr() ? "✕ İzin Gerekli" : "✕ Permission Required"),
-            canOverlay ? (L.isTr() ? "Hazır, devam edebilirsin" : "Ready, you can proceed")
-                       : (L.isTr() ? "Diğer uyg. üzerinde göster → zorunlu" : "Draw over other apps → required"));
+            canOverlay ? (L.isTr() ? "✓ İzinler Tamam" : "✓ Permissions Granted")
+                       : (L.isTr() ? "Önce kısıtlı ayarları aç, sonra izni ver" : "Allow restricted settings first, then overlay"),
+            canOverlay ? (L.isTr() ? "Devam edebilirsin" : "Ready to proceed")
+                       : (L.isTr() ? "İkisi de zorunlu — sırayla yap" : "Both required — do in order"));
 
+        // Adım 1: Uygulama Bilgisi (kısıtlı ayarlar için)
+        addActionBtn(
+            L.isTr() ? "1) Uygulama Bilgisi'ni Aç →" : "1) Open App Info →",
+            this::openAppInfo);
+
+        // Adım 2: Ekran üstü izni
         if (!canOverlay) {
             addActionBtn(
-                L.isTr() ? "İzni Ver →" : "Grant Permission →",
+                L.isTr() ? "2) Ekran Üstü İznini Ver →" : "2) Grant Overlay Permission →",
                 () -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         try {

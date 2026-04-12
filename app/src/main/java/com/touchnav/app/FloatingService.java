@@ -83,6 +83,13 @@ public class FloatingService extends Service {
     private       Runnable ghostRunnable       = null;
     private final Handler  transparencyHandler = new Handler();
     private       Runnable transparencyRunnable = null;
+    private final Handler  kbPollHandler       = new Handler();
+    private final Runnable kbPollRunnable      = new Runnable() {
+        @Override public void run() {
+            syncKeyboardState();
+            kbPollHandler.postDelayed(this, 800);
+        }
+    };
 
     private final List<float[]> touchPath = new ArrayList<>();
     private static final int PATH_MIN_DIST = 15;
@@ -168,7 +175,11 @@ public class FloatingService extends Service {
                 homeY = params.y;
             }
 
-            try { windowManager.updateViewLayout(floatView, params); } catch (Exception ignored) {}
+            try {
+                windowManager.updateViewLayout(floatView, params);
+                floatView.requestLayout();
+                floatView.invalidate();
+            } catch (Exception ignored) {}
         }
     };
 
@@ -288,6 +299,7 @@ public class FloatingService extends Service {
         cancelGhostTimer();
         cancelTransparencyTimer();
         longPressHandler.removeCallbacksAndMessages(null);
+        kbPollHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
@@ -343,14 +355,16 @@ public class FloatingService extends Service {
                 iconPaint.setTextAlign(Paint.Align.CENTER);
                 iconPaint.setAntiAlias(true);
 
+                // Koyu arka plan için: gölge dış halkası
                 contourD.setStyle(Paint.Style.STROKE);
-                contourD.setStrokeWidth(2.5f);
-                contourD.setColor(0x50000000);
-                contourD.setMaskFilter(new BlurMaskFilter(4f, BlurMaskFilter.Blur.NORMAL));
+                contourD.setStrokeWidth(4f);
+                contourD.setColor(0x66000000);
+                contourD.setMaskFilter(new BlurMaskFilter(7f, BlurMaskFilter.Blur.NORMAL));
 
+                // Açık arka plan için: parlak iç halkası
                 contourL.setStyle(Paint.Style.STROKE);
-                contourL.setStrokeWidth(1f);
-                contourL.setColor(0x28FFFFFF);
+                contourL.setStrokeWidth(1.5f);
+                contourL.setColor(0x50FFFFFF);
 
                 badgePaint.setColor(0xFFE53935);
                 badgePaint.setStyle(Paint.Style.FILL);
@@ -391,11 +405,15 @@ public class FloatingService extends Service {
 
             private void drawContours(Canvas c, float cx, float cy, float r) {
                 int shape = settings.getButtonShape();
+                // Hafif şeffaf arka plan dolgusu: hem açık hem koyu zeminde düğmeyi gösterir
+                fillPaint.setColor(0x18000000); // ~%10 siyah — göze batmaz ama zeminden ayırt eder
                 if (shape == SettingsManager.SHAPE_CIRCLE) {
+                    c.drawCircle(cx, cy, r, fillPaint);
                     c.drawCircle(cx, cy, r, contourD);
                     c.drawCircle(cx, cy, r, contourL);
                 } else {
                     Path p = buildShapePath(cx, cy, r);
+                    c.drawPath(p, fillPaint);
                     c.drawPath(p, contourD);
                     c.drawPath(p, contourL);
                 }
@@ -620,6 +638,8 @@ public class FloatingService extends Service {
         updateVisibility();
         startGhostTimer();
         if (settings.isPulseEnabled()) startPulse();
+        // Klavye durumunu her 800ms'de bir kontrol et (broadcast'ı kaçıran cihazlar için)
+        kbPollHandler.postDelayed(kbPollRunnable, 800);
     }
 
     // ── Şekil yolu ───────────────────────────────────────────────

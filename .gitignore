@@ -9,3 +9,6 @@ app/build/
 .externalNativeBuild
 .cxx
 local.properties
+gen_ks
+gen_ks.c
+gen_keystore.py
