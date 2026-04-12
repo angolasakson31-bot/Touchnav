@@ -90,6 +90,8 @@ public class NavService extends AccessibilityService {
             case SettingsManager.ACTION_BACK:
                 performGlobalAction(GLOBAL_ACTION_BACK); break;
             case SettingsManager.ACTION_FORWARD:
+                // Android'de evrensel "ileri" aksiyonu yok; tarayıcılarda history.forward() için
+                // IME/gesture ile simüle edilemez — Back ile aynı tuşa bağlı bırakılır
                 performGlobalAction(GLOBAL_ACTION_BACK); break;
             case SettingsManager.ACTION_HOME:
                 performGlobalAction(GLOBAL_ACTION_HOME); break;

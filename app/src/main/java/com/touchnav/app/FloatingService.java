@@ -184,28 +184,26 @@ public class FloatingService extends Service {
     };
 
     private void syncKeyboardState() {
+        // Poll yalnızca SHOW tespiti için kullanılır — HIDE asla polling ile tetiklenmez.
+        // (getWindows() bazen klavyeyi göremeyebilir; bu durumda yanlış HIDE göndermemeliyiz.)
+        if (keyboardVisible) return; // zaten açık sayılıyor, tekrar SHOW tetikleme
         NavService nav = NavService.getInstance();
         if (nav == null) return;
-        boolean nowVisible = false;
-        int nowHeight = 0;
         try {
             List<android.view.accessibility.AccessibilityWindowInfo> wins = nav.getWindows();
-            if (wins != null) for (android.view.accessibility.AccessibilityWindowInfo w : wins) {
+            if (wins == null) return;
+            for (android.view.accessibility.AccessibilityWindowInfo w : wins) {
                 if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
-                    nowVisible = true;
                     android.graphics.Rect r = new android.graphics.Rect();
                     w.getBoundsInScreen(r);
-                    nowHeight = r.height();
+                    Intent fake = new Intent(ACTION_KEYBOARD_SHOW);
+                    fake.setPackage(getPackageName());
+                    if (r.height() > 0) fake.putExtra("kb_height", r.height());
+                    keyboardReceiver.onReceive(this, fake);
                     break;
                 }
             }
         } catch (Exception ignored) {}
-        if (nowVisible != keyboardVisible) {
-            Intent fake = new Intent(nowVisible ? ACTION_KEYBOARD_SHOW : ACTION_KEYBOARD_HIDE);
-            fake.setPackage(getPackageName());
-            if (nowVisible && nowHeight > 0) fake.putExtra("kb_height", nowHeight);
-            keyboardReceiver.onReceive(this, fake);
-        }
     }
 
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
@@ -268,6 +266,10 @@ public class FloatingService extends Service {
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 
         createFloatingButton();
+        // Sticky pil broadcast'ı createFloatingButton öncesinde gelmiş olabilir;
+        // floatView null iken uygulanamayan rengi şimdi yenile.
+        updateDrawColor();
+        if (floatView != null) floatView.invalidate();
     }
 
     private void reg(BroadcastReceiver r, IntentFilter f, boolean s31) {
