@@ -83,13 +83,8 @@ public class FloatingService extends Service {
     private       Runnable ghostRunnable       = null;
     private final Handler  transparencyHandler = new Handler();
     private       Runnable transparencyRunnable = null;
-    private final Handler  kbPollHandler       = new Handler();
-    private final Runnable kbPollRunnable      = new Runnable() {
-        @Override public void run() {
-            syncKeyboardState();
-            kbPollHandler.postDelayed(this, 800);
-        }
-    };
+    // Klavye tespiti için ViewTreeObserver yöntemi — AccessibilityService'ten bağımsız
+    private View kbDetectorView;
 
     private final List<float[]> touchPath = new ArrayList<>();
     private static final int PATH_MIN_DIST = 15;
@@ -183,27 +178,53 @@ public class FloatingService extends Service {
         }
     };
 
-    private void syncKeyboardState() {
-        // Poll yalnızca SHOW tespiti için kullanılır — HIDE asla polling ile tetiklenmez.
-        // (getWindows() bazen klavyeyi göremeyebilir; bu durumda yanlış HIDE göndermemeliyiz.)
-        if (keyboardVisible) return; // zaten açık sayılıyor, tekrar SHOW tetikleme
-        NavService nav = NavService.getInstance();
-        if (nav == null) return;
-        try {
-            List<android.view.accessibility.AccessibilityWindowInfo> wins = nav.getWindows();
-            if (wins == null) return;
-            for (android.view.accessibility.AccessibilityWindowInfo w : wins) {
-                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
-                    android.graphics.Rect r = new android.graphics.Rect();
-                    w.getBoundsInScreen(r);
-                    Intent fake = new Intent(ACTION_KEYBOARD_SHOW);
-                    fake.setPackage(getPackageName());
-                    if (r.height() > 0) fake.putExtra("kb_height", r.height());
-                    keyboardReceiver.onReceive(this, fake);
-                    break;
-                }
+    /**
+     * ViewTreeObserver tabanlı klavye tespiti.
+     * 1x1 px şeffaf overlay view, SOFT_INPUT_ADJUST_RESIZE ile klavye açılınca küçülür.
+     * getWindowVisibleDisplayFrame() ile görünür yükseklik hesaplanır.
+     * AccessibilityService'e bağımlı değil — tüm cihaz/ROM'larda güvenilir çalışır.
+     */
+    private void createKeyboardDetector() {
+        int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+
+        WindowManager.LayoutParams kbp = new WindowManager.LayoutParams(
+                1,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        // FLAG_LAYOUT_IN_SCREEN eklenmez — IME açılınca pencere küçülsün
+        kbp.gravity = Gravity.TOP | Gravity.LEFT;
+        kbp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+
+        kbDetectorView = new View(this);
+        kbDetectorView.setAlpha(0f);
+
+        kbDetectorView.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if (kbDetectorView == null) return;
+            android.graphics.Rect r = new android.graphics.Rect();
+            kbDetectorView.getWindowVisibleDisplayFrame(r);
+            // r.bottom = klavye+navBar üstündeki görünür alan tabanı
+            int kbH = screenH - r.bottom;
+            // Eşik: 150dp — nav bar'dan (tipik ~48dp) büyük, gerçek klavyeden küçük
+            boolean kbOpen = kbH > dpToPx(150);
+            if (kbOpen != keyboardVisible) {
+                Intent fake = new Intent(kbOpen ? ACTION_KEYBOARD_SHOW : ACTION_KEYBOARD_HIDE);
+                fake.setPackage(getPackageName());
+                if (kbOpen && kbH > 0) fake.putExtra("kb_height", kbH);
+                keyboardReceiver.onReceive(FloatingService.this, fake);
             }
-        } catch (Exception ignored) {}
+        });
+
+        try {
+            windowManager.addView(kbDetectorView, kbp);
+        } catch (Exception e) {
+            kbDetectorView = null;
+        }
     }
 
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
@@ -266,6 +287,7 @@ public class FloatingService extends Service {
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 
         createFloatingButton();
+        createKeyboardDetector();
         // Sticky pil broadcast'ı createFloatingButton öncesinde gelmiş olabilir;
         // floatView null iken uygulanamayan rengi şimdi yenile.
         updateDrawColor();
@@ -301,7 +323,10 @@ public class FloatingService extends Service {
         cancelGhostTimer();
         cancelTransparencyTimer();
         longPressHandler.removeCallbacksAndMessages(null);
-        kbPollHandler.removeCallbacksAndMessages(null);
+        if (kbDetectorView != null) {
+            try { windowManager.removeView(kbDetectorView); } catch (Exception ignored) {}
+            kbDetectorView = null;
+        }
         super.onDestroy();
     }
 
@@ -640,8 +665,6 @@ public class FloatingService extends Service {
         updateVisibility();
         startGhostTimer();
         if (settings.isPulseEnabled()) startPulse();
-        // Klavye durumunu her 800ms'de bir kontrol et (broadcast'ı kaçıran cihazlar için)
-        kbPollHandler.postDelayed(kbPollRunnable, 800);
     }
 
     // ── Şekil yolu ───────────────────────────────────────────────
@@ -683,7 +706,6 @@ public class FloatingService extends Service {
     private boolean handleTouch(MotionEvent e) {
         switch (e.getAction()) {
             case MotionEvent.ACTION_DOWN: {
-                syncKeyboardState();
                 dX = params.x - e.getRawX(); dY = params.y - e.getRawY();
                 startX = (int) e.getRawX(); startY = (int) e.getRawY();
                 moved = false; longPressActive = false;
@@ -829,15 +851,17 @@ public class FloatingService extends Service {
     private void toggleTransparency() {
         if (transparencyActive) { cancelTransparencyTimer(); return; }
         transparencyActive = true;
-        floatView.animate().alpha(0.08f).setDuration(300).start();
+        // Tamamen görünmez yap — fotoğraf/video çekerken hiç görünmesin
+        floatView.animate().alpha(0f).setDuration(200).start();
         transparencyRunnable = this::cancelTransparencyTimer;
         transparencyHandler.postDelayed(transparencyRunnable, settings.getTransparencyDuration());
     }
 
     private void cancelTransparencyTimer() {
-        if (transparencyRunnable != null) transparencyHandler.removeCallbacks(transparencyRunnable);
+        if (transparencyRunnable != null) { transparencyHandler.removeCallbacks(transparencyRunnable); transparencyRunnable = null; }
         transparencyActive = false;
-        if (floatView != null) floatView.animate().alpha(settings.getOpacity()).setDuration(300).start();
+        // Yavaşça geri gel — anlık beliriş yerine fade-in
+        if (floatView != null) floatView.animate().alpha(settings.getOpacity()).setDuration(400).start();
     }
 
     // ── Flash animasyonu ─────────────────────────────────────────
