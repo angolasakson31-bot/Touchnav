@@ -8,7 +8,7 @@ public class SettingsManager {
     private static final String PREFS = "touchnav_prefs";
     private SharedPreferences prefs;
 
-    // ── Aksiyonlar (9 tane — asistan ve el feneri kaldırıldı) ────
+    // ── Aksiyonlar ───────────────────────────────────────────────
     public static final int ACTION_BACK          = 0;
     public static final int ACTION_FORWARD       = 1;
     public static final int ACTION_HOME          = 2;
@@ -18,8 +18,10 @@ public class SettingsManager {
     public static final int ACTION_NONE          = 6;
     public static final int ACTION_SCREEN_RECORD = 7;
     public static final int ACTION_TRANSPARENCY  = 8;
+    public static final int ACTION_ASSISTANT     = 9;
+    public static final int ACTION_TORCH         = 10;
     /** Maksimum geçerli aksiyon indeksi — spinner clamp için */
-    public static final int ACTION_MAX_VALID     = 8;
+    public static final int ACTION_MAX_VALID     = 10;
 
     // ── Buton stilleri ───────────────────────────────────────────
     public static final int STYLE_GHOST   = 0;

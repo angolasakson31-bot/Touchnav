@@ -849,6 +849,8 @@ public class FloatingService extends Service {
         switch (action) {
             case SettingsManager.ACTION_SCREEN_RECORD: startScreenRecord(); return;
             case SettingsManager.ACTION_TRANSPARENCY:  toggleTransparency(); return;
+            case SettingsManager.ACTION_ASSISTANT:     launchAssistant(); return;
+            case SettingsManager.ACTION_TORCH:         toggleTorch(); return;
             case SettingsManager.ACTION_NONE: return;
         }
         NavService nav = NavService.getInstance();
@@ -886,6 +888,46 @@ public class FloatingService extends Service {
         params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         try { windowManager.updateViewLayout(floatView, params); } catch (Exception ignored) {}
         if (floatView != null) floatView.animate().alpha(settings.getOpacity()).setDuration(400).start();
+    }
+
+    private void launchAssistant() {
+        // Önce kullanıcının ayarladığı asistan uygulamasını dene
+        String assistantPkg = settings.getAssistantApp();
+        if (assistantPkg != null && !assistantPkg.isEmpty()) {
+            try {
+                Intent i = getPackageManager().getLaunchIntentForPackage(assistantPkg);
+                if (i != null) {
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    return;
+                }
+            } catch (Exception ignored) {}
+        }
+        // Sistem sesli asistanını tetikle (Google Assistant, Bixby, vs.)
+        try {
+            Intent i = new Intent(Intent.ACTION_VOICE_COMMAND);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e1) {
+            try {
+                Intent i = new Intent("android.intent.action.ASSIST");
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private boolean torchOn = false;
+    private void toggleTorch() {
+        try {
+            android.hardware.camera2.CameraManager cm =
+                (android.hardware.camera2.CameraManager) getSystemService(CAMERA_SERVICE);
+            if (cm == null) return;
+            String[] ids = cm.getCameraIdList();
+            if (ids.length == 0) return;
+            torchOn = !torchOn;
+            cm.setTorchMode(ids[0], torchOn);
+        } catch (Exception ignored) {}
     }
 
     // ── Flash animasyonu ─────────────────────────────────────────
