@@ -36,7 +36,11 @@ public class SettingsManager {
     public static final int STYLE_COMET   = 9;
     public static final int STYLE_DOTRING = 10;
     public static final int STYLE_FILNEON = 11;
-    public static final int STYLE_CROSS   = 12;
+    public static final int STYLE_CROSS     = 12;
+    public static final int STYLE_IPHONE    = 13;
+    public static final int STYLE_MATERIAL3 = 14;
+    public static final int STYLE_FLUENT    = 15;
+    public static final int STYLE_BUBBLE    = 16;
 
     // ── Buton şekilleri ──────────────────────────────────────────
     public static final int SHAPE_CIRCLE = 0;
