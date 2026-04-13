@@ -52,6 +52,23 @@ public class FloatingService extends Service {
     private static boolean sRunning = false;
     public static boolean isRunning() { return sRunning; }
 
+    // Play Store, bankacılık uygulamaları — uyumluluk modunda tamamen gizlenir
+    private static final java.util.Set<String> SECURE_PKGS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "com.android.vending", "com.google.android.finsky",
+        "com.google.android.pay", "com.google.android.apps.nbu.paisa.user",
+        "com.samsung.android.spay", "com.samsung.android.samsungpay",
+        "com.garanti.cepsubesi", "com.ykb.android",
+        "com.akbank.android.apps.akbank", "com.ziraatmobil",
+        "com.isbank.iscem", "com.tmob.denizbank",
+        "com.ingbanktr.ingmobil", "com.vakifbank.mobile",
+        "com.hsbc.hsbcturkey", "com.finansbank.mobile.cepsube",
+        "com.halkbank.mobilebanking", "com.teb",
+        "com.kuveytturk.mobil", "com.albarakaturk.dijitalbankacilik",
+        "com.odeabank.android", "com.fibabanka.Fibabanka.mobile",
+        "com.paypal.android.p2pmobile", "com.revolut.revolut",
+        "com.wise.transferwise"
+    ));
+
     private WindowManager              windowManager;
     private View                       floatView;
     private WindowManager.LayoutParams params;
@@ -72,6 +89,8 @@ public class FloatingService extends Service {
     private int     drawColor;
     private boolean keyboardVisible    = false;
     private int     savedYBeforeKb    = -1;  // klavye gelince eski Y konumunu sakla
+    private boolean windowsDetached   = false; // overlay windows tamamen kaldırıldı mı
+    private WindowManager.LayoutParams kbParams; // kbDetectorView re-attach için
     private int     notifCount        = 0;
     private boolean batteryLow       = false;
     private boolean transparencyActive = false;
@@ -113,11 +132,18 @@ public class FloatingService extends Service {
         @Override public void onReceive(Context ctx, Intent i) {
             String pkg = i.getStringExtra("package");
             if (pkg == null) return;
-            String list = settings.getHidePackages();
             hiddenByPkg = false;
-            if (!list.isEmpty())
-                for (String p : list.split(","))
-                    if (pkg.trim().equals(p.trim())) { hiddenByPkg = true; break; }
+            // Uyumluluk modu: yerleşik güvenli uygulama listesi
+            if (settings.isCompatMode() && SECURE_PKGS.contains(pkg)) {
+                hiddenByPkg = true;
+            }
+            // Kullanıcının özel gizleme listesi
+            if (!hiddenByPkg) {
+                String list = settings.getHidePackages();
+                if (!list.isEmpty())
+                    for (String p : list.split(","))
+                        if (pkg.trim().equals(p.trim())) { hiddenByPkg = true; break; }
+            }
             updateVisibility();
         }
     };
@@ -221,10 +247,12 @@ public class FloatingService extends Service {
         // Fires immediately on layout change (keyboard open/close)
         kbDetectorView.getViewTreeObserver().addOnGlobalLayoutListener(this::checkKbFromDetector);
 
+        kbParams = kbp; // re-attach için sakla
         try {
             windowManager.addView(kbDetectorView, kbp);
         } catch (Exception e) {
             kbDetectorView = null;
+            kbParams = null;
             return;
         }
         // Polling fallback for ROMs that don't fire the layout listener
@@ -480,16 +508,6 @@ public class FloatingService extends Service {
                         c.drawCircle(cx, cy, r - 1f, stylePaint);
                         break;
                     }
-                    case SettingsManager.STYLE_FROST: {
-                        fillPaint.setColor(0x22FFFFFF);
-                        c.drawCircle(cx, cy, r, fillPaint);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setStrokeWidth(2f);
-                        stylePaint.setAlpha(190);
-                        c.drawCircle(cx, cy, r - 1f, stylePaint);
-                        break;
-                    }
                     case SettingsManager.STYLE_SHADOW: {
                         stylePaint.setStyle(Paint.Style.STROKE);
                         stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.4f, BlurMaskFilter.Blur.OUTER));
@@ -526,19 +544,6 @@ public class FloatingService extends Service {
                         c.drawCircle(cx, cy, r - 1f, stylePaint);
                         break;
                     }
-                    case SettingsManager.STYLE_CRYSTAL: {
-                        fillPaint.setColor(Color.argb(40,
-                            Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
-                        c.drawCircle(cx, cy, r, fillPaint);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setStrokeWidth(2f);
-                        stylePaint.setAlpha(200);
-                        c.drawCircle(cx, cy, r - 1f, stylePaint);
-                        fillPaint.setColor(0x18FFFFFF);
-                        c.drawCircle(cx, cy - r * 0.18f, r * 0.42f, fillPaint);
-                        break;
-                    }
                     case SettingsManager.STYLE_PLASMA: {
                         stylePaint.setStyle(Paint.Style.STROKE);
                         stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.22f, BlurMaskFilter.Blur.NORMAL));
@@ -553,19 +558,7 @@ public class FloatingService extends Service {
                         c.drawCircle(cx, cy, r * 0.12f, fillPaint);
                         break;
                     }
-                    case SettingsManager.STYLE_SOLID: {
-                        // Solid semi-transparent fill + thin border
-                        fillPaint.setColor(Color.argb(70, Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
-                        c.drawCircle(cx, cy, r, fillPaint);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setStrokeWidth(2f);
-                        stylePaint.setAlpha(200);
-                        c.drawCircle(cx, cy, r - 1f, stylePaint);
-                        break;
-                    }
                     case SettingsManager.STYLE_HALO: {
-                        // Three concentric rings: inner crisp, middle medium, outer blur
                         stylePaint.setStyle(Paint.Style.STROKE);
                         stylePaint.setMaskFilter(null);
                         stylePaint.setStrokeWidth(2.5f); stylePaint.setAlpha(255);
@@ -577,83 +570,8 @@ public class FloatingService extends Service {
                         c.drawCircle(cx, cy, r - 1f, stylePaint);
                         break;
                     }
-                    case SettingsManager.STYLE_COMET: {
-                        // Two arcs (top-right and bottom-left), creating a yin-yang feel
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStrokeWidth(3f); stylePaint.setAlpha(230);
-                        RectF oval = new RectF(cx - r + 2f, cy - r + 2f, cx + r - 2f, cy + r - 2f);
-                        c.drawArc(oval, -50f, 170f, false, stylePaint);
-                        stylePaint.setAlpha(120);
-                        c.drawArc(oval, 130f, 170f, false, stylePaint);
-                        // center dot
-                        fillPaint.setColor(drawColor); fillPaint.setAlpha(200);
-                        c.drawCircle(cx, cy, r * 0.1f, fillPaint);
-                        break;
-                    }
-                    case SettingsManager.STYLE_DOTRING: {
-                        // Ring of small dots
-                        fillPaint.setColor(drawColor);
-                        int dots = 12;
-                        float dotR = r * 0.09f;
-                        for (int d = 0; d < dots; d++) {
-                            double angle = (2 * Math.PI * d / dots) - Math.PI / 2;
-                            float dotX = (float)(cx + (r - dotR * 2) * Math.cos(angle));
-                            float dotY = (float)(cy + (r - dotR * 2) * Math.sin(angle));
-                            fillPaint.setAlpha(d % 2 == 0 ? 230 : 100);
-                            c.drawCircle(dotX, dotY, dotR, fillPaint);
-                        }
-                        break;
-                    }
-                    case SettingsManager.STYLE_FILNEON: {
-                        // Solid fill + strong neon outer glow (most visible style)
-                        fillPaint.setColor(Color.argb(50, Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
-                        c.drawCircle(cx, cy, r, fillPaint);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.55f, BlurMaskFilter.Blur.NORMAL));
-                        stylePaint.setStrokeWidth(4f); stylePaint.setAlpha(255);
-                        c.drawCircle(cx, cy, r * 0.75f, stylePaint);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStrokeWidth(1.5f); stylePaint.setAlpha(255);
-                        stylePaint.setColor(0xFFFFFFFF);
-                        c.drawCircle(cx, cy, r - 1f, stylePaint);
-                        break;
-                    }
-                    case SettingsManager.STYLE_CROSS: {
-                        // Center dot + 4 tick marks (like a crosshair/target)
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStrokeWidth(1.5f); stylePaint.setAlpha(180);
-                        c.drawCircle(cx, cy, r - 1f, stylePaint); // outer ring
-                        fillPaint.setColor(drawColor); fillPaint.setAlpha(220);
-                        c.drawCircle(cx, cy, r * 0.08f, fillPaint); // center dot
-                        linePaint.setColor(drawColor); linePaint.setAlpha(220);
-                        linePaint.setStyle(Paint.Style.STROKE);
-                        linePaint.setStrokeWidth(2f); linePaint.setStrokeCap(Paint.Cap.ROUND);
-                        float tick = r * 0.28f;
-                        c.drawLine(cx, cy - r + 3f, cx, cy - r + 3f + tick, linePaint); // top
-                        c.drawLine(cx, cy + r - 3f - tick, cx, cy + r - 3f, linePaint); // bottom
-                        c.drawLine(cx - r + 3f, cy, cx - r + 3f + tick, cy, linePaint); // left
-                        c.drawLine(cx + r - 3f - tick, cy, cx + r - 3f, cy, linePaint); // right
-                        break;
-                    }
-                    case SettingsManager.STYLE_IPHONE: {
-                        // iPhone home indicator: horizontal rounded pill
-                        float pillW = r * 0.65f;
-                        float pillH = r * 0.18f;
-                        fillPaint.setColor(Color.argb(200,
-                            Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
-                        RectF iPhonePill = new RectF(cx - pillW, cy - pillH, cx + pillW, cy + pillH);
-                        c.drawRoundRect(iPhonePill, pillH, pillH, fillPaint);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.12f, BlurMaskFilter.Blur.NORMAL));
-                        stylePaint.setStrokeWidth(1f); stylePaint.setAlpha(70);
-                        c.drawRoundRect(iPhonePill, pillH, pillH, stylePaint);
-                        stylePaint.setMaskFilter(null);
-                        break;
-                    }
-                    case SettingsManager.STYLE_MATERIAL3: {
-                        // Material You: tonal filled circle with soft elevation + top highlight
+                    case SettingsManager.STYLE_MATERIAL: {
+                        // Material You: dolgulu küre + yumuşak gölge + üst highlight
                         stylePaint.setStyle(Paint.Style.FILL);
                         stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.3f, BlurMaskFilter.Blur.NORMAL));
                         stylePaint.setColor(Color.argb(70, 0, 0, 0));
@@ -666,43 +584,84 @@ public class FloatingService extends Service {
                         c.drawCircle(cx - r * 0.2f, cy - r * 0.25f, r * 0.38f, fillPaint);
                         break;
                     }
-                    case SettingsManager.STYLE_FLUENT: {
-                        // Windows 11 Fluent: acrylic tint + light-source arc
-                        fillPaint.setColor(Color.argb(55,
-                            Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
-                        c.drawCircle(cx, cy, r, fillPaint);
-                        fillPaint.setColor(0x14FFFFFF);
-                        c.drawCircle(cx, cy, r * 0.82f, fillPaint);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.1f, BlurMaskFilter.Blur.NORMAL));
-                        stylePaint.setStrokeWidth(1.5f); stylePaint.setAlpha(140);
-                        c.drawCircle(cx, cy, r - 1f, stylePaint);
-                        stylePaint.setMaskFilter(null);
-                        stylePaint.setStrokeWidth(1f); stylePaint.setAlpha(210);
-                        stylePaint.setColor(0xFFFFFFFF);
-                        RectF fluentOval = new RectF(cx - r + 2f, cy - r + 2f, cx + r - 2f, cy + r - 2f);
-                        c.drawArc(fluentOval, 200f, 130f, false, stylePaint);
-                        break;
-                    }
-                    case SettingsManager.STYLE_BUBBLE: {
-                        // Glass bubble: deep fill + inner glow + top specular highlight
-                        fillPaint.setColor(Color.argb(160,
-                            Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
-                        c.drawCircle(cx, cy, r, fillPaint);
+                    case SettingsManager.STYLE_GLOW: {
+                        // Güçlü dış parıltı + dolu iç — en belirgin stil
                         stylePaint.setStyle(Paint.Style.FILL);
-                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.45f, BlurMaskFilter.Blur.NORMAL));
-                        stylePaint.setColor(drawColor); stylePaint.setAlpha(110);
-                        c.drawCircle(cx, cy, r * 0.5f, stylePaint);
+                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.75f, BlurMaskFilter.Blur.NORMAL));
+                        stylePaint.setColor(drawColor); stylePaint.setAlpha(230);
+                        c.drawCircle(cx, cy, r * 0.58f, stylePaint);
                         stylePaint.setMaskFilter(null);
-                        fillPaint.setColor(0x45FFFFFF);
-                        c.drawCircle(cx - r * 0.22f, cy - r * 0.28f, r * 0.35f, fillPaint);
-                        stylePaint.setStyle(Paint.Style.STROKE);
-                        stylePaint.setStrokeWidth(1f); stylePaint.setAlpha(90);
-                        stylePaint.setColor(0xFFFFFFFF);
-                        c.drawCircle(cx, cy, r - 0.5f, stylePaint);
+                        fillPaint.setColor(Color.argb(210,
+                            Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
+                        c.drawCircle(cx, cy, r * 0.52f, fillPaint);
                         break;
                     }
-
+                    case SettingsManager.STYLE_BEACON: {
+                        // Dolu dolgu + gölge + parlak beyaz çerçeve
+                        stylePaint.setStyle(Paint.Style.FILL);
+                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.4f, BlurMaskFilter.Blur.OUTER));
+                        stylePaint.setColor(drawColor); stylePaint.setAlpha(170);
+                        c.drawCircle(cx, cy, r, stylePaint);
+                        stylePaint.setMaskFilter(null);
+                        fillPaint.setColor(Color.argb(235,
+                            Color.red(drawColor), Color.green(drawColor), Color.blue(drawColor)));
+                        c.drawCircle(cx, cy, r - 1f, fillPaint);
+                        stylePaint.setStyle(Paint.Style.STROKE);
+                        stylePaint.setStrokeWidth(2.5f); stylePaint.setAlpha(255);
+                        stylePaint.setColor(0xFFFFFFFF);
+                        c.drawCircle(cx, cy, r - 1.5f, stylePaint);
+                        break;
+                    }
+                    case SettingsManager.STYLE_RIPPLE: {
+                        // Su dalgası: içten dışa azalan üç halka
+                        stylePaint.setStyle(Paint.Style.STROKE);
+                        stylePaint.setMaskFilter(null);
+                        stylePaint.setStrokeWidth(2f); stylePaint.setAlpha(235);
+                        c.drawCircle(cx, cy, r * 0.32f, stylePaint);
+                        stylePaint.setStrokeWidth(1.5f); stylePaint.setAlpha(135);
+                        c.drawCircle(cx, cy, r * 0.62f, stylePaint);
+                        stylePaint.setStrokeWidth(1f); stylePaint.setAlpha(55);
+                        c.drawCircle(cx, cy, r - 1f, stylePaint);
+                        fillPaint.setColor(drawColor); fillPaint.setAlpha(230);
+                        c.drawCircle(cx, cy, r * 0.09f, fillPaint);
+                        break;
+                    }
+                    case SettingsManager.STYLE_MIST: {
+                        // Çok soluk — içerik önünde neredeyse görünmez
+                        stylePaint.setStyle(Paint.Style.FILL);
+                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.35f, BlurMaskFilter.Blur.NORMAL));
+                        stylePaint.setColor(drawColor); stylePaint.setAlpha(48);
+                        c.drawCircle(cx, cy, r * 0.68f, stylePaint);
+                        stylePaint.setMaskFilter(null);
+                        stylePaint.setStyle(Paint.Style.STROKE);
+                        stylePaint.setStrokeWidth(1f); stylePaint.setAlpha(38);
+                        c.drawCircle(cx, cy, r - 1f, stylePaint);
+                        break;
+                    }
+                    case SettingsManager.STYLE_EMBER: {
+                        // Küçük parlak çekirdek + geniş yumuşak aura — kor gibi
+                        stylePaint.setStyle(Paint.Style.FILL);
+                        stylePaint.setMaskFilter(new BlurMaskFilter(r * 0.82f, BlurMaskFilter.Blur.NORMAL));
+                        stylePaint.setColor(drawColor); stylePaint.setAlpha(95);
+                        c.drawCircle(cx, cy, r * 0.28f, stylePaint);
+                        stylePaint.setMaskFilter(null);
+                        fillPaint.setColor(drawColor); fillPaint.setAlpha(230);
+                        c.drawCircle(cx, cy, r * 0.14f, fillPaint);
+                        break;
+                    }
+                    case SettingsManager.STYLE_WHISPER: {
+                        // Sadece 4 küçük nokta — bakmazsan fark edilmez
+                        fillPaint.setColor(drawColor); fillPaint.setAlpha(200);
+                        float dotR2 = r * 0.07f;
+                        float dist2 = r * 0.76f;
+                        c.drawCircle(cx,         cy - dist2, dotR2, fillPaint);
+                        c.drawCircle(cx + dist2, cy,         dotR2, fillPaint);
+                        c.drawCircle(cx,         cy + dist2, dotR2, fillPaint);
+                        c.drawCircle(cx - dist2, cy,         dotR2, fillPaint);
+                        fillPaint.setAlpha(120);
+                        c.drawCircle(cx, cy, dotR2 * 0.55f, fillPaint);
+                        break;
+                    }
                 }
             }
 
@@ -1207,7 +1166,28 @@ public class FloatingService extends Service {
 
     private void updateVisibility() {
         if (floatView == null) return;
-        floatView.setVisibility((isLandscape || hiddenByPkg) ? View.GONE : View.VISIBLE);
+        if (hiddenByPkg) {
+            // Overlay pencerelerini tamamen kaldır — Play Store/banka donma sorunu çözülür
+            if (!windowsDetached) {
+                try { windowManager.removeView(floatView); } catch (Exception ignored) {}
+                if (kbDetectorView != null) {
+                    try { windowManager.removeView(kbDetectorView); } catch (Exception ignored) {}
+                }
+                kbCheckHandler.removeCallbacksAndMessages(null);
+                windowsDetached = true;
+            }
+        } else {
+            if (windowsDetached) {
+                // Pencereleri geri ekle
+                try { windowManager.addView(floatView, params); } catch (Exception ignored) {}
+                if (kbDetectorView != null && kbParams != null) {
+                    try { windowManager.addView(kbDetectorView, kbParams); } catch (Exception ignored) {}
+                    kbCheckHandler.postDelayed(kbCheckRunnable, 400);
+                }
+                windowsDetached = false;
+            }
+            floatView.setVisibility(isLandscape ? View.GONE : View.VISIBLE);
+        }
     }
 
     // ── Bildirim ─────────────────────────────────────────────────
