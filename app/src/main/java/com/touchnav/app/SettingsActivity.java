@@ -478,7 +478,7 @@ public class SettingsActivity extends Activity {
         LinearLayout card=makeCard(L.cardAppearance(),
             L.isTr()?"Butonun opaklığını ve boyutunu ayarlar. Değişiklikler anlık yansır."
                     :"Adjusts button opacity and size. Changes apply live.");
-        addSlider(card,L.opacity(),L.isTr()?"Düşük = daha şeffaf. (5% çok saydam)":"Lower = more transparent. (5% nearly invisible)",
+        addSlider(card,L.opacity(),L.isTr()?"Düşük = daha şeffaf. (5 = neredeyse görünmez)":"Lower = more transparent. (5 = nearly invisible)",
             5,100,(int)(settings.getOpacity()*100),"%",v->{settings.setOpacity(v/100f);sendRefresh();});
         addSlider(card,L.size(),L.isTr()?"Butonun ekrandaki boyutu (dp).":"Button size on screen (dp).",
             40,140,settings.getSize(),"dp",v->{settings.setSize(v);sendRefresh();});
@@ -796,4 +796,48 @@ public class SettingsActivity extends Activity {
         };
     }
 
-    private View makeShapePreview
+    private View makeShapePreview                }
+            }
+        };
+    }
+
+    private View makeShapePreview(int shape, int color) {
+        final int c=color;
+        return new View(this){
+            private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+            {setLayerType(LAYER_TYPE_SOFTWARE,null);setBackground(null);
+             p.setStyle(Paint.Style.STROKE);p.setColor(c);p.setStrokeWidth(2f);p.setAlpha(200);}
+            @Override protected void onDraw(Canvas cv){
+                float cx=getWidth()/2f,cy=getHeight()/2f,r=Math.min(cx,cy)-4f;
+                if(r<=0) return;
+                switch(shape){
+                    case 0:cv.drawCircle(cx,cy,r,p);break;
+                    case 1:cv.drawRoundRect(new RectF(cx-r,cy-r,cx+r,cy+r),r*.35f,r*.35f,p);break;
+                    case 2:{Path dp=new Path();float cr=r*.75f;dp.addOval(new RectF(cx-cr,cy-r*.8f,cx+cr,cy+cr*.4f),Path.Direction.CW);dp.moveTo(cx-cr*.55f,cy+cr*.2f);dp.lineTo(cx,cy+r);dp.lineTo(cx+cr*.55f,cy+cr*.2f);dp.close();cv.drawPath(dp,p);break;}
+                    case 3:{Path hp=new Path();for(int i=0;i<6;i++){double a=Math.PI/6+i*Math.PI/3;float x=(float)(cx+r*Math.cos(a)),y=(float)(cy+r*Math.sin(a));if(i==0)hp.moveTo(x,y);else hp.lineTo(x,y);}hp.close();cv.drawPath(hp,p);break;}
+                }
+            }
+        };
+    }
+
+    // ── Yardımcılar ──────────────────────────────────────────────
+    private void sendRefresh() {
+        Intent i=new Intent(FloatingService.ACTION_REFRESH);
+        i.setPackage(getPackageName()); sendBroadcast(i);
+    }
+
+    private void showNewProfileDialog() {
+        EditText input=new EditText(this); input.setHint(L.profileName()); input.setPadding(px(16),px(12),px(16),px(12));
+        new AlertDialog.Builder(this).setTitle(L.newProfile()).setView(input)
+            .setPositiveButton(L.save(),(d,w)->{String name=input.getText().toString().trim();
+                if(!name.isEmpty()){profiles.saveProfile(name);settings.setCurrentProfile(name);sendRefresh();buildCards();}
+            }).setNegativeButton(L.cancel(),null).show();
+    }
+
+    private void toast(String msg){ android.widget.Toast.makeText(this,msg,android.widget.Toast.LENGTH_SHORT).show(); }
+    private void haptic(View v){ v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING); }
+    private int px(int dp){ return (int)(dp*getResources().getDisplayMetrics().density); }
+
+    interface OnInt  { void on(int v); }
+    interface OnBool { void on(boolean v); }
+}
