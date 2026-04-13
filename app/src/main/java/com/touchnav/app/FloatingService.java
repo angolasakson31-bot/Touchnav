@@ -902,138 +902,108 @@ public class FloatingService extends Service {
         }
     }
 
-    // ──�� Sohbet/Metin modu ───────────────────────────────────────
+    // ─── Sohbet/Metin modu: popup dene, olmazsa normal aç ────────
     private void launchAssistantChat(String pkg) {
-        if (pkg != null && !pkg.isEmpty()) {
-            try {
-                Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
-                if (i != null) {
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    if (!tryPopup(i)) startActivity(i); // önce popup dene
-                    return;
-                }
-            } catch (Exception ignored) {}
-        }
+        Intent i = resolveAppIntent(pkg);
+        if (i != null) { launchWithPopup(i); return; }
         startAssistIntent();
     }
 
     // ─── Sesli sohbet modu ───────────────────────────────────────
     private void launchAssistantVoice(String pkg) {
-        if (pkg != null && !pkg.isEmpty()) {
-            // 1. Uygulamaya özel sesli sohbet intent'i dene
-            Intent voice = knownVoiceIntent(pkg);
-            if (voice != null) {
-                voice.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                if (tryPopup(voice)) return;
-                try { startActivity(voice); return; } catch (Exception ignored) {}
-            }
-            // 2. Sesli intent yoksa uygulamayı normal aç (ChatGPT, Claude, vb.)
-            try {
-                Intent normal = getPackageManager().getLaunchIntentForPackage(pkg);
-                if (normal != null) {
-                    normal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    if (!tryPopup(normal)) startActivity(normal);
-                    return;
-                }
-            } catch (Exception ignored) {}
+        if (pkg == null || pkg.isEmpty()) { startAssistIntent(); return; }
+
+        // 1. ACTION_ASSIST bu uygulamaya gönder —
+        //    Gemini, Google gibi asistanlar bunu voice modunda karsilar
+        try {
+            Intent assist = new Intent("android.intent.action.ASSIST");
+            assist.setPackage(pkg);
+            assist.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (!tryPopup(assist)) startActivity(assist);
+            return;
+        } catch (Exception ignored) {}  // uygulama ASSIST'i desteklemiyor
+
+        // 2. Bilinen uygulamalar icin ozel sesli intent (Bixby, Alexa vb.)
+        Intent voice = knownVoiceIntent(pkg);
+        if (voice != null) {
+            voice.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { launchWithPopup(voice); return; } catch (Exception ignored) {}
         }
-        // 3. Seçili uygulama yok: sistem asistanı sesli mod
+
+        // 3. Sesli intent desteklemiyor (ChatGPT, Claude vb.) → normal ac
+        Intent normal = resolveAppIntent(pkg);
+        if (normal != null) { launchWithPopup(normal); return; }
         startAssistIntent();
     }
 
-    /**
-     * Intent'i popup/freeform pencerede açmayı dener.
-     * Önce Samsung pop-up view, sonra AOSP freeform yöntemi denenir.
-     * Başarılıysa true döner, başarısızsa false (caller normal açar).
-     */
-    private boolean tryPopup(Intent base) {
-        DisplayMetrics dm = getResources().getDisplayMetrics();
-        int sw = dm.widthPixels, sh = dm.heightPixels;
-        int w = (int)(sw * 0.88f);
-        int h = (int)(sh * 0.72f);
-        int l = (sw - w) / 2;
-        int t = (sh - h) / 5; // biraz yukarıda dursun
-        Rect bounds = new Rect(l, t, l + w, t + h);
+    /** Popup dene; olmazsa normal startActivity */
+    private void launchWithPopup(Intent intent) {
+        if (!tryPopup(intent)) {
+            try { startActivity(intent); } catch (Exception ignored) {}
+        }
+    }
 
-        // Yöntem 1: Samsung One UI pop-up view
+    /** getLaunchIntentForPackage + FLAG_ACTIVITY_NEW_TASK, null donebilir */
+    private Intent resolveAppIntent(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return null;
         try {
-            Intent si = new Intent(base);
-            si.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
-            ActivityOptions opts = ActivityOptions.makeBasic();
-            opts.setLaunchBounds(bounds);
-            // Samsung pop-up sabiti (hex 0x20000000 = FLAG_ACTIVITY_LAUNCH_TO_SIDE değil, windowing)
-            // Samsung multiwindow launch type extra
-            si.putExtra("com.samsung.android.multiwindow.LAUNCH_TYPE", "popup_view");
-            startActivity(si, opts.toBundle());
-            return true;
-        } catch (Exception ignored) {}
-
-        // Yöntem 2: AOSP/MIUI/OxygenOS freeform windowing (reflection — API 24+)
-        try {
-            Intent fi = new Intent(base);
-            fi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
-            ActivityOptions opts = ActivityOptions.makeBasic();
-            opts.setLaunchBounds(bounds);
-            // WINDOWING_MODE_FREEFORM = 5 (hidden API, reflection ile)
-            ActivityOptions.class
-                .getMethod("setLaunchWindowingMode", int.class)
-                .invoke(opts, 5);
-            startActivity(fi, opts.toBundle());
-            return true;
-        } catch (Exception ignored) {}
-
-        return false;
+            Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (i != null) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            return i;
+        } catch (Exception e) { return null; }
     }
 
     /**
-     * Bilinen AI/asistan uygulamalarının sesli sohbet intent'lerini döndürür.
-     * Null → bu uygulama için özel sesli intent bilinmiyor.
+     * Freeform/popup pencerede acmayi dener.
+     * WINDOWING_MODE_FREEFORM (5) via reflection — Samsung/AOSP calisir,
+     * desteklemeyen cihazlarda exception firlatir ve false doner.
+     * Eski Samsung-specific extra kaldirildi: o yaklasim exception atmadan
+     * full-screen acip true donuyordu (yaniltici).
+     */
+    private boolean tryPopup(Intent base) {
+        try {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int sw = dm.widthPixels, sh = dm.heightPixels;
+            int w = (int)(sw * 0.88f), h = (int)(sh * 0.72f);
+            int l = (sw - w) / 2,    t = (sh - h) / 5;
+
+            Intent i = new Intent(base);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+
+            ActivityOptions opts = ActivityOptions.makeBasic();
+            opts.setLaunchBounds(new Rect(l, t, l + w, t + h));
+            // WINDOWING_MODE_FREEFORM = 5 — hidden API, desteklenmezse exception
+            ActivityOptions.class
+                .getMethod("setLaunchWindowingMode", int.class)
+                .invoke(opts, 5);
+
+            startActivity(i, opts.toBundle());
+            return true;
+        } catch (Exception e) {
+            return false; // cihaz freeform desteklemiyor → caller normal acar
+        }
+    }
+
+    /**
+     * Yalnizca standart intent yoluyla sesli acilabilen bilinen uygulamalar.
+     * Gemini/Google burada degil — onlar ACTION_ASSIST'e yanit veriyor (uste denendi).
+     * Null → bu uygulama icin ozel sesli intent bilinmiyor.
      */
     private Intent knownVoiceIntent(String pkg) {
         switch (pkg) {
-            // ── Google ──────────────────────────────────────────
-            case "com.google.android.googlequicksearchbox":
-            case "com.google.android.apps.bard":        // Gemini eski
-            case "com.google.android.apps.gemini": {    // Gemini yeni
-                Intent i = new Intent("android.intent.action.VOICE_COMMAND");
-                i.setPackage(pkg);
-                return i;
-            }
-            // ── ChatGPT ─────────────────────────────────────────
-            case "com.openai.chatgpt": {
-                // ChatGPT'nin sesli mod deep link'i
-                Intent i = new Intent(Intent.ACTION_VIEW,
-                    android.net.Uri.parse("openai://chat?mode=voice"));
-                i.setPackage(pkg);
-                return i;
-            }
-            // ── Microsoft Copilot / Bing ─────────────────────────
-            case "com.microsoft.bing":
-            case "com.microsoft.copilot": {
-                Intent i = new Intent(Intent.ACTION_VIEW,
-                    android.net.Uri.parse("bing://voice"));
-                i.setPackage(pkg);
-                return i;
-            }
-            // ── Samsung Bixby ───────────────────────────────────
-            case "com.samsung.android.bixby.agent": {
+            case "com.samsung.android.bixby.agent":
                 return new Intent("com.samsung.android.bixby.agent.OPEN_BIXBY");
-            }
-            // ── Amazon Alexa ────────────────────────────────────
-            case "com.amazon.dee.app": {
+            case "com.amazon.dee.app":
                 return new Intent("com.amazon.alexa.action.ACTIVATE_ALEXA_VOICE");
+            case "com.google.android.googlequicksearchbox": {
+                Intent i = new Intent(Intent.ACTION_VOICE_COMMAND);
+                i.setPackage(pkg); return i;
             }
         }
-        // Paket adı eşleşmedi ama anahtar kelime içeriyorsa
         if (pkg.contains("bixby") || pkg.contains("svoice"))
             return new Intent("com.samsung.android.bixby.agent.OPEN_BIXBY");
         if (pkg.contains("alexa"))
             return new Intent("com.amazon.alexa.action.ACTIVATE_ALEXA_VOICE");
-        if (pkg.contains("gemini") || pkg.contains("bard")) {
-            Intent i = new Intent("android.intent.action.VOICE_COMMAND");
-            i.setPackage(pkg);
-            return i;
-        }
         return null;
     }
 
