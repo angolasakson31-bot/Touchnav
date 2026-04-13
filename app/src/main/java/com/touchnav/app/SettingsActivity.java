@@ -796,11 +796,6 @@ public class SettingsActivity extends Activity {
         };
     }
 
-    private View makeShapePreview                }
-            }
-        };
-    }
-
     private View makeShapePreview(int shape, int color) {
         final int c=color;
         return new View(this){
