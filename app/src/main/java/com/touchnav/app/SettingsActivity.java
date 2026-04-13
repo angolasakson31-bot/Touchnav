@@ -362,8 +362,8 @@ public class SettingsActivity extends Activity {
 
     private void buildStyleCard() {
         LinearLayout card=makeCard(L.cardStyle(),
-            L.isTr()?"Butonun görsel stilini seçer. Neon=parlak, Crystal=şeffaf dolgu, Plasma=çift halka."
-                    :"Button visual style. Neon=glowing, Crystal=transparent fill, Plasma=double ring.");
+            L.isTr()?"Butonun görsel stilini seçer."
+                    :"Choose the button visual style.");
         String[] names=L.styleNames();
         int perRow=4;
         int rowCount=(int)Math.ceil(names.length/(double)perRow);
@@ -791,7 +791,6 @@ public class SettingsActivity extends Activity {
                     case 10:{rP.setStyle(Paint.Style.FILL);rP.setMaskFilter(new BlurMaskFilter(r*.35f,BlurMaskFilter.Blur.NORMAL));rP.setColor(c);rP.setAlpha(48);cv.drawCircle(cx,cy,r*.68f,rP);rP.setMaskFilter(null);rP.setStyle(Paint.Style.STROKE);rP.setStrokeWidth(1f);rP.setAlpha(38);cv.drawCircle(cx,cy,r-1,rP);break;}
                     case 11:{rP.setStyle(Paint.Style.FILL);rP.setMaskFilter(new BlurMaskFilter(r*.82f,BlurMaskFilter.Blur.NORMAL));rP.setColor(c);rP.setAlpha(95);cv.drawCircle(cx,cy,r*.28f,rP);rP.setMaskFilter(null);fP.setColor(c);fP.setAlpha(230);cv.drawCircle(cx,cy,r*.14f,fP);break;}
                     case 12:{fP.setColor(c);fP.setAlpha(200);float dr=r*.07f,ds=r*.76f;cv.drawCircle(cx,cy-ds,dr,fP);cv.drawCircle(cx+ds,cy,dr,fP);cv.drawCircle(cx,cy+ds,dr,fP);cv.drawCircle(cx-ds,cy,dr,fP);fP.setAlpha(120);cv.drawCircle(cx,cy,dr*.55f,fP);break;}
-                }
                 }
             }
         };
