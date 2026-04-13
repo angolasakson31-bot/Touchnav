@@ -141,7 +141,7 @@ public class L {
 
     // ── Stil isimleri ─────────────────────────────────────────────
     public static String[] styleNames() {
-        return new String[]{"Ghost","Frost","Shadow","Minimal","Neon","Crystal","Plasma","Solid","Halo","Comet","DotRing","FillNeon","Cross"};
+        return new String[]{"Ghost","Frost","Shadow","Minimal","Neon","Crystal","Plasma","Solid","Halo","Comet","DotRing","FillNeon","Cross","iPhone","Material","Fluent","Bubble"};
     }
 
     // ── Şekil isimleri ────────────────────────────────────────────
