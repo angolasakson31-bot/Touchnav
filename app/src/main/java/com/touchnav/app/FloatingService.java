@@ -52,11 +52,30 @@ public class FloatingService extends Service {
     private static boolean sRunning = false;
     public static boolean isRunning() { return sRunning; }
 
-    // Play Store, bankacılık uygulamaları — uyumluluk modunda tamamen gizlenir
+    // Uyumluluk modunda tamamen gizlenen uygulamalar:
+    // Play Store, bankacılık, Google hizmetleri, sistem ayarları, şifre alanı yoğun uygulamalar.
     private static final java.util.Set<String> SECURE_PKGS = new java.util.HashSet<>(java.util.Arrays.asList(
+        // Play Store / Google ödeme
         "com.android.vending", "com.google.android.finsky",
         "com.google.android.pay", "com.google.android.apps.nbu.paisa.user",
+        // Google uygulamaları (donmaya yol açanlar)
+        "com.google.android.gm",                      // Gmail
+        "com.google.android.googlequicksearchbox",    // Google
+        "com.google.android.apps.googleassistant",    // Assistant
+        "com.google.android.contacts",                // Contacts
+        "com.google.android.dialer",                  // Telefon
+        // Sistem ayarları (şifre/pin ekranları)
+        "com.android.settings",
+        "com.samsung.android.settings",
+        "com.miui.securitycore", "com.miui.securitycenter",
+        "com.huawei.systemmanager",
+        // Tarayıcılar (şifre doldurma)
+        "com.android.chrome", "com.google.android.apps.chrome",
+        "com.sec.android.app.sbrowser",               // Samsung Internet
+        "com.opera.browser",
+        // Samsung Pay / cüzdan
         "com.samsung.android.spay", "com.samsung.android.samsungpay",
+        // Türk bankaları
         "com.garanti.cepsubesi", "com.ykb.android",
         "com.akbank.android.apps.akbank", "com.ziraatmobil",
         "com.isbank.iscem", "com.tmob.denizbank",
@@ -65,8 +84,14 @@ public class FloatingService extends Service {
         "com.halkbank.mobilebanking", "com.teb",
         "com.kuveytturk.mobil", "com.albarakaturk.dijitalbankacilik",
         "com.odeabank.android", "com.fibabanka.Fibabanka.mobile",
+        // Uluslararası ödeme
         "com.paypal.android.p2pmobile", "com.revolut.revolut",
-        "com.wise.transferwise"
+        "com.wise.transferwise",
+        // Şifre yöneticileri
+        "com.lastpass.lpandroid", "com.lastpass.authenticator",
+        "com.agilebits.onepassword",
+        "com.bitwarden.mobile",
+        "com.dashlane"
     ));
 
     private WindowManager              windowManager;
@@ -93,6 +118,9 @@ public class FloatingService extends Service {
     private int     notifCount        = 0;
     private boolean batteryLow       = false;
     private boolean transparencyActive = false;
+
+    // ACTION_MOVE sırasında windowManager.updateViewLayout() debounce (~60fps)
+    private long lastMoveLayoutMs = 0;
 
     private ValueAnimator pulseAnimator;
     private ValueAnimator flashAnimator;
@@ -124,18 +152,19 @@ public class FloatingService extends Service {
         @Override public void onReceive(Context ctx, Intent i) {
             String pkg = i.getStringExtra("package");
             if (pkg == null) return;
-            hiddenByPkg = false;
-            // Uyumluluk modu: yerleşik güvenli uygulama listesi
-            if (settings.isCompatMode() && SECURE_PKGS.contains(pkg)) {
-                hiddenByPkg = true;
-            }
-            // Kullanıcının özel gizleme listesi
+
+            // Yerleşik güvenli liste: Play Integrity / DRM korumalı uygulamalar overlay'i
+            // algılayıp bloklar — her zaman gizle, CompatMode şartı aranmaz.
+            hiddenByPkg = SECURE_PKGS.contains(pkg);
+
+            // Kullanıcının özel gizleme listesi (CompatMode bağımsız)
             if (!hiddenByPkg) {
                 String list = settings.getHidePackages();
                 if (!list.isEmpty())
                     for (String p : list.split(","))
                         if (pkg.trim().equals(p.trim())) { hiddenByPkg = true; break; }
             }
+
             updateVisibility();
         }
     };
@@ -149,22 +178,32 @@ public class FloatingService extends Service {
             if (floatView == null) return;
 
             if (show) {
-                // Klavye yüksekliği NavService'ten gelir; yoksa screenH'ın %42'si tahmin
-                int kbHeight = i.getIntExtra("kb_height", (int)(screenH * 0.42f));
-                // Minimum mantıklı klavye yüksekliği: 150px; maksimum ekranın %70'i
-                if (kbHeight < 150 || kbHeight > screenH * 0.70f) kbHeight = (int)(screenH * 0.42f);
-                int visibleBottom = screenH - kbHeight;
+                // kb_top: AccessibilityWindowInfo.getBoundsInScreen().top — en güvenilir değer.
+                // NavService 150ms bekleyerek klavye tamamen açıldıktan sonra ölçer.
+                int kbTop    = i.getIntExtra("kb_top",    -1);
+                int kbHeight = i.getIntExtra("kb_height", 0);
 
-                // Mevcut Y konumunu her zaman kaydet (klavye kapanınca geri dönmek için)
-                savedYBeforeKb = params.y;
-
-                // Sadece klavye butonu kapatıyorsa yukarı taşı; zaten üstündeyse yerinde kal
-                int btnBottom = params.y + params.height;
-                if (btnBottom > visibleBottom - dpToPx(8)) {
-                    params.y = Math.max(dpToPx(8), visibleBottom - params.height - dpToPx(16));
+                // Geçerli kb_top varsa doğrudan kullan; yoksa kbHeight üzerinden hesapla
+                int visibleBottom;
+                if (kbTop > 0 && kbTop < screenH * 0.85f) {
+                    visibleBottom = kbTop;
+                } else if (kbHeight > 150 && kbHeight < screenH * 0.70f) {
+                    visibleBottom = screenH - kbHeight;
+                } else {
+                    // Hiçbir güvenilir değer yok — varsayılan %42
+                    visibleBottom = (int)(screenH * 0.58f);
                 }
 
-                // Klavye küçültme özelliği aktifse boyutu da küçült
+                // Mevcut konumu kaydet (klavye kapanınca geri dön)
+                savedYBeforeKb = params.y;
+
+                // Buton klavyeyle çakışıyorsa yukarı taşı; zaten üstündeyse yerinde kal
+                int btnBottom = params.y + params.height;
+                if (btnBottom > visibleBottom - dpToPx(8)) {
+                    params.y = Math.max(dpToPx(8), visibleBottom - params.height - dpToPx(12));
+                }
+
+                // Klavye küçültme aktifse boyutu küçült
                 if (settings.isKeyboardShrink()) {
                     int sizePx = dpToPx(settings.getKeyboardShrinkSize());
                     params.width  = sizePx;
@@ -182,7 +221,7 @@ public class FloatingService extends Service {
                     savedYBeforeKb = -1;
                 }
 
-                // Klavye küçültme özelliği aktifse boyutu geri yükle
+                // Klavye küçültme aktifse boyutu geri yükle
                 if (settings.isKeyboardShrink()) {
                     int sizePx = dpToPx(settings.getSize());
                     params.width  = sizePx;
@@ -197,7 +236,6 @@ public class FloatingService extends Service {
 
             try {
                 windowManager.updateViewLayout(floatView, params);
-                floatView.requestLayout();
                 floatView.invalidate();
             } catch (Exception ignored) {}
         }
@@ -236,7 +274,8 @@ public class FloatingService extends Service {
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         DisplayMetrics dm = new DisplayMetrics();
-        windowManager.getDefaultDisplay().getMetrics(dm);
+        // getRealMetrics: nav bar dahil tam fiziksel ekran boyutu — overlay koordinatlarıyla eşleşir
+        windowManager.getDefaultDisplay().getRealMetrics(dm);
         screenW = dm.widthPixels;
         screenH = dm.heightPixels;
         isLandscape = getResources().getConfiguration().orientation
@@ -722,7 +761,13 @@ public class FloatingService extends Service {
                     int nx = clamp((int)(e.getRawX()+dX), 0, screenW - params.width);
                     int ny = clamp((int)(e.getRawY()+dY), 0, screenH - params.height);
                     params.x = nx; params.y = ny;
-                    try { windowManager.updateViewLayout(floatView, params); } catch (Exception ignored) {}
+                    // 60fps sınırı: updateViewLayout() ana thread'de senkron çalışır,
+                    // her MOVE'da çağrılması (120+ Hz ekranlarda) frame drop yaratır.
+                    long nowMs = android.os.SystemClock.elapsedRealtime();
+                    if (nowMs - lastMoveLayoutMs >= 16) {
+                        lastMoveLayoutMs = nowMs;
+                        try { windowManager.updateViewLayout(floatView, params); } catch (Exception ignored) {}
+                    }
                 }
                 return true;
             }
